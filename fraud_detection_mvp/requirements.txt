@@ -1,0 +1,8 @@
+pandas
+python-dotenv
+pydantic
+bandit
+safety
+shap
+xgboost
+streamlit
