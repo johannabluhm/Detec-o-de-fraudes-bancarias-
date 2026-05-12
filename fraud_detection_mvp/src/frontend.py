@@ -1,74 +1,121 @@
-import streamlit as st
+import locale
+
 import requests
+import streamlit as st
 
-# Configuração da página
-st.set_page_config(page_title="Anti-Fraude MVP", layout="centered")
+API_URL = "http://127.0.0.1:8000/predict"
+TYPE_MAP = {
+    "TRANSFERENCIA": 4,
+    "SAQUE": 1,
+    "PAGAMENTO": 3,
+    "DEPOSITO": 0,
+    "DEBITO": 2,
+}
 
-st.title("🛡️ Sistema de Detecção de Fraudes")
-st.write("Insira os dados da transação para análise em tempo real pelo nosso motor de IA.")
+st.set_page_config(page_title="Plataforma Anti Fraude", layout="centered")
 
-# Formulário de entrada de dados
-with st.form("transaction_form"):
-    type_op = st.selectbox("Tipo de Operação", ["TRANSFERÊNCIA", "SAQUE", "PAGAMENTO", "DEPÓSITO"])
-    
-    # Mapeamento do tipo para o código numérico que o modelo espera
-    type_map = {"TRANSFERÊNCIA": 3, "SAQUE": 1, "PAGAMENTO": 2, "DEPÓSITO": 0}
-    type_code = type_map[type_op]
 
-    amount = st.number_input("Valor da Transação (R$)", min_value=0.1, value=1500.0)
-    oldbalanceOrg = st.number_input("Saldo Atual da Origem (R$)", min_value=0.0, value=5000.0)
-    
-    # Calculando o novo saldo automaticamente para facilitar a demo
-    newbalanceOrig = st.number_input("Novo Saldo da Origem (R$)", value=max(0.0, oldbalanceOrg - amount))
-    
-    oldbalanceDest = st.number_input("Saldo Atual do Destino (R$)", min_value=0.0, value=0.0)
-    newbalanceDest = st.number_input("Novo Saldo do Destino (R$)", value=oldbalanceDest + amount)
+def formatar_real(valor: float) -> str:
+    try:
+        locale.setlocale(locale.LC_ALL, "pt_BR.UTF-8")
+        return locale.currency(valor, grouping=True, symbol="R$ ")
+    except locale.Error:
+        valor_formatado = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"R$ {valor_formatado}"
+    except Exception:
+        return f"R$ {valor:.2f}"
 
-    submit_button = st.form_submit_button("Analisar Transação")
 
-# Ação após clicar no botão
-if submit_button:
-    # Montando o payload para a API
-    payload = {
+def build_payload(type_code: int, amount: float, oldbalance_org: float, newbalance_orig: float, oldbalance_dest: float, newbalance_dest: float) -> dict:
+    return {
         "step": 1,
         "type": type_code,
         "amount": amount,
-        "oldbalanceOrg": oldbalanceOrg,
-        "newbalanceOrig": newbalanceOrig,
-        "oldbalanceDest": oldbalanceDest,
-        "newbalanceDest": newbalanceDest
+        "oldbalanceOrg": oldbalance_org,
+        "newbalanceOrig": newbalance_orig,
+        "oldbalanceDest": oldbalance_dest,
+        "newbalanceDest": newbalance_dest,
     }
 
+
+def request_prediction(payload: dict) -> tuple[dict | None, str | None]:
     try:
-        # Enviando para a nossa API FastAPI
-        # Certifique-se de que o uvicorn esteja rodando em outro terminal!
-        response = requests.post("http://127.0.0.1:8000/predict", json=payload)
-        
-        if response.status_code == 200:
-            result = response.json()
-            
-            st.divider()
-            
-            # Lógica de exibição visual baseada no retorno da API
-            if result["is_fraud"]:
-                st.error("🚨 **TRANSAÇÃO BLOQUEADA (FRAUDE DETECTADA)**")
-                st.write(f"**Risco:** {result['risk_level']} (Probabilidade: {result['fraud_probability']*100:.1f}%)")
-                
-                # Explicação de negócio (Explicabilidade)
-                if amount > oldbalanceOrg:
-                    st.warning("Explicação: Bloqueado porque o valor solicitado excede o saldo da conta de origem.")
-                elif newbalanceOrig == 0 and type_op == "TRANSFERÊNCIA":
-                    st.warning("Explicação: Padrão de alto risco - Conta de origem esvaziada em transferência imediata.")
-                else:
-                    st.warning("Explicação: Comportamento transacional anômalo detectado pelo modelo histórico.")
-                    
-            else:
-                st.success("✅ **TRANSAÇÃO APROVADA**")
-                st.write(f"**Risco:** {result['risk_level']} (Probabilidade: {result['fraud_probability']*100:.1f}%)")
-                st.info("Explicação: Padrão comportamental dentro da normalidade estatística.")
-                
-        else:
-            st.error(f"Erro na validação dos dados: {response.text}")
-            
+        response = requests.post(API_URL, json=payload, timeout=8)
+        response.raise_for_status()
+        return response.json(), None
+    except requests.exceptions.Timeout:
+        return None, "A solicitacao excedeu o tempo limite. Tente novamente mais tarde."
     except requests.exceptions.ConnectionError:
-        st.error("Erro de conexão. A API do modelo está rodando? (Execute: uvicorn src.app:app)")
+        return None, "Nao foi possivel conectar ao servidor. Verifique se a API FastAPI esta rodando."
+    except requests.exceptions.RequestException as exc:
+        return None, f"Erro de comunicacao com a API: {exc}"
+    except ValueError:
+        return None, "Resposta invalida do servidor."
+
+
+def render_prediction_result(result: dict, amount: float, oldbalance_org: float, newbalance_orig: float, type_op: str) -> None:
+    if result["is_fraud"]:
+        st.error("TRANSACAO BLOQUEADA POR SUSPEITA DE FRAUDE")
+        st.warning(f"Nivel de Risco: {result['risk_level']} (Probabilidade: {result['fraud_probability']*100:.1f}%)")
+
+        if amount > oldbalance_org:
+            st.write("Diagnostico do Sistema: O valor solicitado excede a capacidade financeira da conta de origem.")
+        elif newbalance_orig == 0 and type_op == "TRANSFERENCIA":
+            st.write("Diagnostico do Sistema: Padrao agressivo detectado. Esvaziamento total de conta via transferencia imediata.")
+        else:
+            st.write("Diagnostico do Sistema: O algoritmo identificou desvios severos em relacao ao historico de seguranca.")
+    else:
+        st.success("TRANSACAO LIBERADA COM SUCESSO")
+        st.write("Diagnostico do Sistema: Assinatura transacional validada e considerada segura.")
+
+
+st.title("Motor Preditivo Anti Fraude")
+st.write("Insira os dados da transacao para analise em tempo real pela Inteligencia Artificial.")
+st.write("A API deve estar em execução localmente em http://127.0.0.1:8000.")
+st.divider()
+
+with st.form("transaction_form"):
+    st.subheader("Dados da Operacao")
+    type_op = st.selectbox(
+        "Categoria da Operacao",
+        ["TRANSFERENCIA", "SAQUE", "PAGAMENTO", "DEPOSITO", "DEBITO"],
+    )
+
+    type_code = TYPE_MAP[type_op]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        amount = st.number_input("Valor Solicitado (R$)", min_value=0.1, value=1500.0, step=100.0, format="%.2f")
+        oldbalance_org = st.number_input("Saldo da Origem (R$)", min_value=0.0, value=5000.0, step=100.0, format="%.2f")
+    with col2:
+        oldbalance_dest = st.number_input("Saldo do Destino (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f")
+
+    newbalance_orig = max(0.0, oldbalance_org - amount)
+    newbalance_dest = oldbalance_dest + amount
+
+    if amount > oldbalance_org:
+        st.warning("O valor informado e maior que o saldo da conta de origem. Verifique se os dados estao corretos.")
+
+    submit_button = st.form_submit_button("Executar Analise de Risco", use_container_width=True)
+
+if submit_button:
+    st.divider()
+    st.subheader("Visao Geral do Balanco Financeiro")
+
+    colA, colB, colC = st.columns(3)
+    colA.metric("Valor da Operacao", formatar_real(amount))
+    colB.metric("Saldo Restante (Origem)", formatar_real(newbalance_orig))
+    colC.metric("Novo Saldo (Destino)", formatar_real(newbalance_dest))
+
+    st.divider()
+    payload = build_payload(type_code, amount, oldbalance_org, newbalance_orig, oldbalance_dest, newbalance_dest)
+
+    with st.spinner("Enviando informacoes para analise..."):
+        result, error_message = request_prediction(payload)
+
+    if error_message:
+        st.error(error_message)
+    elif result is not None:
+        render_prediction_result(result, amount, oldbalance_org, newbalance_orig, type_op)
+    else:
+        st.error("Ocorreu um erro inesperado ao processar a solicitacao.")

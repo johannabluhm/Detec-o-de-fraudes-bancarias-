@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fraud_detection_mvp"
+version = "0.1.0"
+description = "Minimal fraud detection MVP with data loading, preprocessing, and a Streamlit frontend."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+  {name = "Your Name"}
+]
+dependencies = [
+  "pandas",
+  "python-dotenv",
+  "pydantic",
+  "requests",
+  "bandit",
+  "safety",
+  "shap",
+  "xgboost",
+  "streamlit",
+  "fastapi",
+  "uvicorn",
+  "scikit-learn"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "wheel"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

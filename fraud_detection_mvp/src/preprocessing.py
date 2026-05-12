@@ -1,6 +1,5 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from pathlib import Path
 
 def preprocess_and_split(df):
@@ -8,9 +7,19 @@ def preprocess_and_split(df):
     cols_to_drop = ['nameOrig', 'nameDest', 'isFlaggedFraud']
     df_cleaned = df.drop(columns=cols_to_drop)
     
-    # Codificação da variável categórica
-    le = LabelEncoder()
-    df_cleaned['type'] = le.fit_transform(df_cleaned['type'])
+    # Mapeamento fixo para garantir consistência entre Treino, API e Frontend
+    # CASH_IN -> 0, CASH_OUT -> 1, DEBIT -> 2, PAYMENT -> 3, TRANSFER -> 4
+    type_map = {
+        'CASH_IN': 0, 'DEPOSITO': 0,
+        'CASH_OUT': 1, 'SAQUE': 1,
+        'DEBIT': 2, 'DEBITO': 2,
+        'PAYMENT': 3, 'PAGAMENTO': 3,
+        'TRANSFER': 4, 'TRANSFERENCIA': 4
+    }
+    df_cleaned['type'] = df_cleaned['type'].map(type_map)
+    
+    # Preenchimento de possíveis valores nulos após o mapeamento (caso surja um tipo novo)
+    df_cleaned['type'] = df_cleaned['type'].fillna(-1)
     
     # Separação de Features e Target
     X = df_cleaned.drop('isFraud', axis=1)

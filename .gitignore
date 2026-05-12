@@ -24,3 +24,6 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+data/raw/*.csv
+models/*.pkl

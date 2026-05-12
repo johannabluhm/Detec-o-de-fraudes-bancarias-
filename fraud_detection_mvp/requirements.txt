@@ -1,8 +1,13 @@
 pandas
 python-dotenv
 pydantic
+requests
 bandit
 safety
 shap
 xgboost
 streamlit
+fastapi
+uvicorn
+scikit-learn
+pytest

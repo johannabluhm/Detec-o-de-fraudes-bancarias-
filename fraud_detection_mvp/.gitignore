@@ -1,2 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+
+# Test runners
+.pytest_cache/
+
+# IDEs
+.vscode/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+
+# Data and models
 data/raw/*.csv
 models/*.pkl
