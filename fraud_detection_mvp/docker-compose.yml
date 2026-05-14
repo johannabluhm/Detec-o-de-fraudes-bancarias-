@@ -1,0 +1,38 @@
+services:
+  # Backend API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8008:8000"
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+      - SAGEMAKER_ENDPOINT=fraud-detection-endpoint
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    command: uvicorn src.app:app --host 0.0.0.0 --port 8000
+
+  # Frontend Streamlit
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+      - API_URL=http://api:8000/predict
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: always
+    command: streamlit run src/frontend.py --server.port 8501 --server.address 0.0.0.0

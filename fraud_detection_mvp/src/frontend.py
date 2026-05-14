@@ -3,7 +3,9 @@ import locale
 import requests
 import streamlit as st
 
-API_URL = "http://127.0.0.1:8000/predict"
+import os
+
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000/predict")
 TYPE_MAP = {
     "TRANSFERENCIA": 4,
     "SAQUE": 1,
@@ -14,6 +16,38 @@ TYPE_MAP = {
 
 st.set_page_config(page_title="Plataforma Anti Fraude", layout="centered")
 
+# Gerenciamento de Sessão de Login
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+
+def login():
+    st.title("Login - Sistema Anti Fraude")
+    with st.container():
+        user = st.text_input("Usuário")
+        pwd = st.text_input("Senha", type="password")
+        if st.button("Entrar", use_container_width=True):
+            if user == "admin" and pwd == "hackathon":
+                st.session_state.logged_in = True
+                st.rerun()
+            else:
+                st.error("Credenciais inválidas")
+
+if not st.session_state.logged_in:
+    login()
+    st.stop()
+
+# Configurações na Barra Lateral
+st.sidebar.title("Configurações")
+infra_choice = st.sidebar.selectbox(
+    "Infraestrutura do Modelo",
+    ["Local (XGBoost)", "AWS (SageMaker)"],
+    help="Escolha onde o modelo de detecção será executado."
+)
+infra_flag = "AWS" if "AWS" in infra_choice else "Local"
+
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.rerun()
 
 def formatar_real(valor: float) -> str:
     try:
@@ -26,15 +60,18 @@ def formatar_real(valor: float) -> str:
         return f"R$ {valor:.2f}"
 
 
-def build_payload(type_code: int, amount: float, oldbalance_org: float, newbalance_orig: float, oldbalance_dest: float, newbalance_dest: float) -> dict:
+def build_payload(type_code: int, amount: float, oldbalance_org: float, newbalance_orig: float, oldbalance_dest: float, newbalance_dest: float, infra: str) -> dict:
     return {
-        "step": 1,
-        "type": type_code,
-        "amount": amount,
-        "oldbalanceOrg": oldbalance_org,
-        "newbalanceOrig": newbalance_orig,
-        "oldbalanceDest": oldbalance_dest,
-        "newbalanceDest": newbalance_dest,
+        "transaction": {
+            "step": 1,
+            "type": type_code,
+            "amount": amount,
+            "oldbalanceOrg": oldbalance_org,
+            "newbalanceOrig": newbalance_orig,
+            "oldbalanceDest": oldbalance_dest,
+            "newbalanceDest": newbalance_dest,
+        },
+        "infrastructure": infra
     }
 
 
@@ -48,6 +85,12 @@ def request_prediction(payload: dict) -> tuple[dict | None, str | None]:
     except requests.exceptions.ConnectionError:
         return None, "Nao foi possivel conectar ao servidor. Verifique se a API FastAPI esta rodando."
     except requests.exceptions.RequestException as exc:
+        if exc.response is not None:
+            try:
+                detail = exc.response.json().get("detail", str(exc))
+                return None, f"Erro da API: {detail}"
+            except:
+                pass
         return None, f"Erro de comunicacao com a API: {exc}"
     except ValueError:
         return None, "Resposta invalida do servidor."
@@ -55,7 +98,7 @@ def request_prediction(payload: dict) -> tuple[dict | None, str | None]:
 
 def render_prediction_result(result: dict, amount: float, oldbalance_org: float, newbalance_orig: float, type_op: str) -> None:
     if result["is_fraud"]:
-        st.error("TRANSACAO BLOQUEADA POR SUSPEITA DE FRAUDE")
+        st.error(f"TRANSACAO BLOQUEADA - {result.get('status', 'FRAUDE DETECTADA')}")
         st.warning(f"Nivel de Risco: {result['risk_level']} (Probabilidade: {result['fraud_probability']*100:.1f}%)")
 
         if amount > oldbalance_org:
@@ -65,13 +108,13 @@ def render_prediction_result(result: dict, amount: float, oldbalance_org: float,
         else:
             st.write("Diagnostico do Sistema: O algoritmo identificou desvios severos em relacao ao historico de seguranca.")
     else:
-        st.success("TRANSACAO LIBERADA COM SUCESSO")
+        st.success(f"TRANSACAO LIBERADA - {result.get('status', 'APROVADA')}")
         st.write("Diagnostico do Sistema: Assinatura transacional validada e considerada segura.")
 
 
 st.title("Motor Preditivo Anti Fraude")
+st.info(f"Executando via: **{infra_choice}**")
 st.write("Insira os dados da transacao para analise em tempo real pela Inteligencia Artificial.")
-st.write("A API deve estar em execução localmente em http://127.0.0.1:8000.")
 st.divider()
 
 with st.form("transaction_form"):
@@ -108,7 +151,7 @@ if submit_button:
     colC.metric("Novo Saldo (Destino)", formatar_real(newbalance_dest))
 
     st.divider()
-    payload = build_payload(type_code, amount, oldbalance_org, newbalance_orig, oldbalance_dest, newbalance_dest)
+    payload = build_payload(type_code, amount, oldbalance_org, newbalance_orig, oldbalance_dest, newbalance_dest, infra_flag)
 
     with st.spinner("Enviando informacoes para analise..."):
         result, error_message = request_prediction(payload)

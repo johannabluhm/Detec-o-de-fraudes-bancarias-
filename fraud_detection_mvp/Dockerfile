@@ -12,16 +12,17 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copia arquivos de dependências
-COPY fraud_detection_mvp/requirements.txt .
+COPY requirements.txt .
 
 # Instala dependências Python
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia o restante do código do projeto
-COPY fraud_detection_mvp/ /app/
+COPY . /app/
 
 # Expõe as portas da API (8000) e do Streamlit (8501)
 EXPOSE 8000

@@ -3,17 +3,21 @@ from pydantic import BaseModel, Field
 import pickle
 import pandas as pd
 from pathlib import Path
+import boto3
+import json
+import os
 
 # Inicialização da API
 app = FastAPI(
     title="API de Detecção de Fraudes",
     description="MVP para o Hackathon",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 # Configuração de caminhos e carregamento do modelo
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / "models" / "xgboost_fraud_model.pkl"
+SAGEMAKER_ENDPOINT = os.getenv("SAGEMAKER_ENDPOINT", "fraud-detection-endpoint")
 
 
 def load_model() -> object:
@@ -43,20 +47,52 @@ class Transaction(BaseModel):
     newbalanceDest: float = Field(..., description="Saldo final do destino")
 
 
+class PredictionRequest(BaseModel):
+    transaction: Transaction
+    infrastructure: str = Field("Local", description="Infraestrutura: 'Local' ou 'AWS'")
+
+
 @app.get("/health")
 def health_check():
     return {
         "status": "ok",
         "model_loaded": model is not None,
+        "aws_configured": SAGEMAKER_ENDPOINT != "fraud-detection-endpoint"
     }
 
 
-@app.post("/predict")
-def predict_fraud(transaction: Transaction):
-    if model is None:
-        raise HTTPException(status_code=500, detail="Modelo preditivo não disponível.")
+def call_sagemaker(data: dict):
+    try:
+        client = boto3.client("sagemaker-runtime")
+        payload = json.dumps(data)
+        response = client.invoke_endpoint(
+            EndpointName=SAGEMAKER_ENDPOINT,
+            ContentType="application/json",
+            Body=payload
+        )
+        result = json.loads(response["Body"].read().decode())
+        # Formato esperado da AWS deve bater com o da nossa API
+        return {
+            "is_fraud": result.get("prediction") == 1,
+            "fraud_probability": result.get("probability", 0.5),
+            "risk_level": "Alto" if result.get("probability", 0) > 0.8 else "Médio",
+            "status": "Processado via AWS SageMaker"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao chamar AWS SageMaker: {e}. Verifique credenciais.")
 
-    # Usando model_dump() em vez de dict() para compatibilidade com Pydantic v2
+
+@app.post("/predict")
+def predict_fraud(request: PredictionRequest):
+    transaction = request.transaction
+    infra = request.infrastructure
+
+    if infra == "AWS":
+        return call_sagemaker(transaction.model_dump())
+
+    if model is None:
+        raise HTTPException(status_code=500, detail="Modelo local não disponível.")
+
     input_data = pd.DataFrame([transaction.model_dump()])
 
     try:

@@ -12,13 +12,16 @@ def test_health_check():
 def test_predicao_transacao_valida():
     """Testa o Caminho Feliz: Uma transação perfeitamente estruturada."""
     payload = {
-        "step": 1,
-        "type": 3,
-        "amount": 1500.0,
-        "oldbalanceOrg": 5000.0,
-        "newbalanceOrig": 3500.0,
-        "oldbalanceDest": 1000.0,
-        "newbalanceDest": 2500.0
+        "transaction": {
+            "step": 1,
+            "type": 3,
+            "amount": 1500.0,
+            "oldbalanceOrg": 5000.0,
+            "newbalanceOrig": 3500.0,
+            "oldbalanceDest": 1000.0,
+            "newbalanceDest": 2500.0
+        },
+        "infrastructure": "Local"
     }
     
     response = client.post("/predict", json=payload)
@@ -39,13 +42,16 @@ def test_seguranca_valor_negativo():
     antes mesmo de acionar o modelo de Machine Learning.
     """
     payload = {
-        "step": 1,
-        "type": 3,
-        "amount": -500.0,  # Valor malicioso
-        "oldbalanceOrg": 5000.0,
-        "newbalanceOrig": 5500.0,
-        "oldbalanceDest": 1000.0,
-        "newbalanceDest": 500.0
+        "transaction": {
+            "step": 1,
+            "type": 3,
+            "amount": -500.0,  # Valor malicioso
+            "oldbalanceOrg": 5000.0,
+            "newbalanceOrig": 5500.0,
+            "oldbalanceDest": 1000.0,
+            "newbalanceDest": 500.0
+        },
+        "infrastructure": "Local"
     }
     
     response = client.post("/predict", json=payload)
@@ -60,13 +66,16 @@ def test_seguranca_dados_faltantes():
     esquecer de enviar uma informação obrigatória.
     """
     payload = {
-        "step": 1,
-        "type": 3,
-        # 'amount' foi removido propositalmente
-        "oldbalanceOrg": 5000.0,
-        "newbalanceOrig": 5000.0,
-        "oldbalanceDest": 1000.0,
-        "newbalanceDest": 1000.0
+        "transaction": {
+            "step": 1,
+            "type": 3,
+            # 'amount' foi removido propositalmente
+            "oldbalanceOrg": 5000.0,
+            "newbalanceOrig": 5000.0,
+            "oldbalanceDest": 1000.0,
+            "newbalanceDest": 1000.0
+        },
+        "infrastructure": "Local"
     }
     
     response = client.post("/predict", json=payload)
