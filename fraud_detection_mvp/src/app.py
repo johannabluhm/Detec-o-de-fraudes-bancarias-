@@ -36,16 +36,19 @@ except Exception as e:
     model = None
 
 
+# Mock de banco de dados para Velocity (Em produção seria um Redis/SQL)
+history_db = {}
+
 # Esquema de Validação de Dados (Segurança)
 class Transaction(BaseModel):
     step: int = Field(..., description="Unidade de tempo no mundo real")
-    type: int = Field(..., description="Tipo de transação codificada (ex: 0 a 4)")
-    amount: float = Field(..., gt=0, description="Valor da transação (deve ser maior que zero)")
+    type: str = Field(..., description="Tipo de transação (TRANSFER ou CASH_OUT)")
+    amount: float = Field(..., gt=0, description="Valor da transação")
     oldbalanceOrg: float = Field(..., description="Saldo inicial da origem")
     newbalanceOrig: float = Field(..., description="Saldo final da origem")
     oldbalanceDest: float = Field(..., description="Saldo inicial do destino")
     newbalanceDest: float = Field(..., description="Saldo final do destino")
-
+    nameOrig: str = Field(..., description="ID da conta de origem para cálculo de velocity")
 
 class PredictionRequest(BaseModel):
     transaction: Transaction
@@ -62,6 +65,7 @@ def health_check():
 
 
 def call_sagemaker(data: dict):
+    # Nota: SageMaker precisaria ser atualizado para o novo schema de features
     try:
         client = boto3.client("sagemaker-runtime")
         payload = json.dumps(data)
@@ -71,7 +75,6 @@ def call_sagemaker(data: dict):
             Body=payload
         )
         result = json.loads(response["Body"].read().decode())
-        # Formato esperado da AWS deve bater com o da nossa API
         return {
             "is_fraud": result.get("prediction") == 1,
             "fraud_probability": result.get("probability", 0.5),
@@ -79,21 +82,49 @@ def call_sagemaker(data: dict):
             "status": "Processado via AWS SageMaker"
         }
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Erro ao chamar AWS SageMaker: {e}. Verifique credenciais.")
+        raise HTTPException(status_code=502, detail=f"Erro ao chamar AWS SageMaker: {e}")
 
 
 @app.post("/predict")
 def predict_fraud(request: PredictionRequest):
-    transaction = request.transaction
+    trans = request.transaction
     infra = request.infrastructure
 
     if infra == "AWS":
-        return call_sagemaker(transaction.model_dump())
+        return call_sagemaker(trans.model_dump())
 
     if model is None:
         raise HTTPException(status_code=500, detail="Modelo local não disponível.")
 
-    input_data = pd.DataFrame([transaction.model_dump()])
+    # 1. Atualizar histórico de Velocity
+    history_db[trans.nameOrig] = history_db.get(trans.nameOrig, 0) + 1
+    
+    # 2. Engenharia de Features em tempo real (Sync com preprocessing.py)
+    type_map = {'CASH_OUT': 1, 'TRANSFER': 4}
+    mapped_type = type_map.get(trans.type.upper(), -1)
+    
+    if mapped_type == -1:
+        return {
+            "is_fraud": False,
+            "fraud_probability": 0.0,
+            "risk_level": "Baixo",
+            "status": "Tipo de transação sem histórico de fraude (Aprovado automaticamente)"
+        }
+
+    features = {
+        'type': mapped_type,
+        'amount': trans.amount,
+        'oldbalanceOrg': trans.oldbalanceOrg,
+        'newbalanceOrig': trans.newbalanceOrig,
+        'oldbalanceDest': trans.oldbalanceDest,
+        'newbalanceDest': trans.newbalanceDest,
+        'trans_count_orig': history_db[trans.nameOrig],
+        'errorBalanceOrig': trans.newbalanceOrig + trans.amount - trans.oldbalanceOrg,
+        'errorBalanceDest': trans.oldbalanceDest + trans.amount - trans.newbalanceDest,
+        'hour': trans.step % 24
+    }
+
+    input_data = pd.DataFrame([features])
 
     try:
         prediction = model.predict(input_data)[0]
@@ -105,7 +136,7 @@ def predict_fraud(request: PredictionRequest):
             "is_fraud": bool(prediction),
             "fraud_probability": round(float(probability), 4),
             "risk_level": risk_level,
-            "status": "Transação bloqueada" if prediction == 1 else "Transação aprovada",
+            "status": "Transação bloqueada (ALERTA DE FRAUDE)" if prediction == 1 else "Transação aprovada",
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erro ao processar predição: {e}")

@@ -12,18 +12,30 @@ def train_xgboost(X_train, y_train):
     num_positives = len(y_train[y_train == 1])
     scale_weight = num_negatives / num_positives
     
-    # Configuração do Modelo
-    # tree_method='hist' aumenta drasticamente a velocidade de treinamento em grandes datasets
-    model = XGBClassifier(
-        n_estimators=100,
-        max_depth=5,
-        learning_rate=0.1,
-        scale_pos_weight=scale_weight,
-        tree_method='hist', 
-        random_state=42,
-        eval_metric='aucpr' # Foco em Precision-Recall
-    )
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    params_path = BASE_DIR / "models" / "best_params.pkl"
     
+    # Configuração Padrão
+    params = {
+        'n_estimators': 100,
+        'max_depth': 5,
+        'learning_rate': 0.1,
+        'scale_pos_weight': scale_weight,
+        'tree_method': 'hist',
+        'random_state': 42,
+        'eval_metric': 'aucpr'
+    }
+    
+    # Sobrescreve com parâmetros otimizados se existirem
+    if params_path.exists():
+        print(f"Carregando hiperparâmetros otimizados de {params_path}...")
+        with open(params_path, 'rb') as f:
+            best_params = pickle.load(f)
+            params.update(best_params)
+    else:
+        print("Usando hiperparâmetros padrão.")
+    
+    model = XGBClassifier(**params)
     model.fit(X_train, y_train)
     print("Treinamento concluído.")
     return model

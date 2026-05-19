@@ -1,17 +1,12 @@
 import locale
-
 import requests
 import streamlit as st
-
 import os
 
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000/predict")
 TYPE_MAP = {
-    "TRANSFERENCIA": 4,
-    "SAQUE": 1,
-    "PAGAMENTO": 3,
-    "DEPOSITO": 0,
-    "DEBITO": 2,
+    "TRANSFERENCIA": "TRANSFER",
+    "SAQUE": "CASH_OUT",
 }
 
 st.set_page_config(page_title="Plataforma Anti Fraude", layout="centered")
@@ -26,7 +21,7 @@ def login():
         user = st.text_input("Usuário")
         pwd = st.text_input("Senha", type="password")
         if st.button("Entrar", use_container_width=True):
-            if user == "admin" and pwd == "hackathon":
+            if user == "admin" and pwd == "123456":
                 st.session_state.logged_in = True
                 st.rerun()
             else:
@@ -60,16 +55,17 @@ def formatar_real(valor: float) -> str:
         return f"R$ {valor:.2f}"
 
 
-def build_payload(type_code: int, amount: float, oldbalance_org: float, newbalance_orig: float, oldbalance_dest: float, newbalance_dest: float, infra: str) -> dict:
+def build_payload(type_str: str, amount: float, oldbalance_org: float, newbalance_orig: float, oldbalance_dest: float, newbalance_dest: float, name_orig: str, infra: str) -> dict:
     return {
         "transaction": {
             "step": 1,
-            "type": type_code,
+            "type": type_str,
             "amount": amount,
             "oldbalanceOrg": oldbalance_org,
             "newbalanceOrig": newbalance_orig,
             "oldbalanceDest": oldbalance_dest,
             "newbalanceDest": newbalance_dest,
+            "nameOrig": name_orig
         },
         "infrastructure": infra
     }
@@ -112,19 +108,24 @@ def render_prediction_result(result: dict, amount: float, oldbalance_org: float,
         st.write("Diagnostico do Sistema: Assinatura transacional validada e considerada segura.")
 
 
-st.title("Motor Preditivo Anti Fraude")
+st.title("Motor Preditivo Anti Fraude (Sênior)")
 st.info(f"Executando via: **{infra_choice}**")
-st.write("Insira os dados da transacao para analise em tempo real pela Inteligencia Artificial.")
+st.write("Análise comportamental avançada ativada (Velocity & Balance Error).")
 st.divider()
 
 with st.form("transaction_form"):
     st.subheader("Dados da Operacao")
-    type_op = st.selectbox(
-        "Categoria da Operacao",
-        ["TRANSFERENCIA", "SAQUE", "PAGAMENTO", "DEPOSITO", "DEBITO"],
-    )
+    
+    col_acc1, col_acc2 = st.columns(2)
+    with col_acc1:
+        name_orig = st.text_input("ID Conta de Origem", value="C12345678")
+    with col_acc2:
+        type_op = st.selectbox(
+            "Categoria da Operacao",
+            ["TRANSFERENCIA", "SAQUE"],
+        )
 
-    type_code = TYPE_MAP[type_op]
+    type_str = TYPE_MAP[type_op]
 
     col1, col2 = st.columns(2)
     with col1:
@@ -137,7 +138,7 @@ with st.form("transaction_form"):
     newbalance_dest = oldbalance_dest + amount
 
     if amount > oldbalance_org:
-        st.warning("O valor informado e maior que o saldo da conta de origem. Verifique se os dados estao corretos.")
+        st.warning("O valor informado e maior que o saldo da conta de origem.")
 
     submit_button = st.form_submit_button("Executar Analise de Risco", use_container_width=True)
 
@@ -151,9 +152,9 @@ if submit_button:
     colC.metric("Novo Saldo (Destino)", formatar_real(newbalance_dest))
 
     st.divider()
-    payload = build_payload(type_code, amount, oldbalance_org, newbalance_orig, oldbalance_dest, newbalance_dest, infra_flag)
+    payload = build_payload(type_str, amount, oldbalance_org, newbalance_orig, oldbalance_dest, newbalance_dest, name_orig, infra_flag)
 
-    with st.spinner("Enviando informacoes para analise..."):
+    with st.spinner("Enviando informacoes para analise comportamental..."):
         result, error_message = request_prediction(payload)
 
     if error_message:

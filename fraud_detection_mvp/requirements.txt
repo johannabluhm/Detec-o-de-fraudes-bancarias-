@@ -5,6 +5,8 @@ requests
 bandit
 safety
 shap
+matplotlib
+optuna
 xgboost
 streamlit
 fastapi
