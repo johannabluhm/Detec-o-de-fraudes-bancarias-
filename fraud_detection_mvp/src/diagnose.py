@@ -77,9 +77,9 @@ if __name__ == "__main__":
     
     df = load_and_verify(str(DATA_PATH))
     if df is not None:
-        # Amostragem para diagnóstico rápido
+        # Amostragem temporal para diagnóstico mantendo a linha do tempo
         if len(df) > 100000:
-            df = df.sample(100000, random_state=42)
+            df = df.sort_values('step').head(100000)
             
         X_train, X_test, y_train, y_test, _, _ = preprocess_and_split(df)
         

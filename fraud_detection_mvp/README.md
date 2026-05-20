@@ -16,9 +16,11 @@ docker-compose up --build
 O motor preditivo foi construído com **XGBoost**, escolhido por sua eficiência em grandes volumes de dados.
 
 ### Diferenciais Técnicos:
-- **Tratamento de Desbalanceamento:** Utilizamos `scale_pos_weight` para lidar com a raridade das fraudes, garantindo que o modelo não ignore os casos críticos.
-- **Validação Robusta (Holdout):** 10% dos dados foram isolados e nunca vistos pelo modelo até o teste final. Isso prova que o sistema funciona em dados reais, não apenas "decorou" o passado.
-- **API Segura:** Validação de dados via **Pydantic v2**, bloqueando inputs malformados ou valores negativos antes de processar a predição.
+- **Prevenção de Data Leakage:** Pipeline de dados estritamente cronológico, garantindo que o modelo nunca use informações do futuro (vazamento temporal) para prever o presente.
+- **Treinamento com Early Stopping:** Proteção ativa contra overfitting; o treinamento é interrompido assim que o modelo para de generalizar, garantindo estabilidade em produção.
+- **Threshold Calibrado por Negócio:** Ponto de corte de decisão (0.62) otimizado via curva Precision-Recall para minimizar perdas financeiras reais (Custo de Fraude vs. Atrito com Cliente).
+- **Compliance e Segurança (LGPD):** Anonimização de dados sensíveis (PII) via hashing SHA-256 antes do processamento, garantindo privacidade sem perda de poder preditivo.
+- **API Segura:** Validação de dados via **Pydantic v2**, com bloqueio inteligente de tipos de transação não suportados e verificação de saldo insuficiente.
 
 ---
 

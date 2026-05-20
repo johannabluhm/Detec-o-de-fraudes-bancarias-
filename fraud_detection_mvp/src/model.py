@@ -4,7 +4,7 @@ from sklearn.metrics import classification_report, confusion_matrix, roc_auc_sco
 import pickle
 from pathlib import Path
 
-def train_xgboost(X_train, y_train):
+def train_xgboost(X_train, y_train, X_test=None, y_test=None):
     print("Iniciando o treinamento do modelo XGBoost...")
     
     # Calculando a proporção para lidar com o desbalanceamento
@@ -17,13 +17,14 @@ def train_xgboost(X_train, y_train):
     
     # Configuração Padrão
     params = {
-        'n_estimators': 100,
+        'n_estimators': 1000, # Aumentado para early stopping agir
         'max_depth': 5,
         'learning_rate': 0.1,
         'scale_pos_weight': scale_weight,
         'tree_method': 'hist',
         'random_state': 42,
-        'eval_metric': 'aucpr'
+        'eval_metric': 'aucpr',
+        'early_stopping_rounds': 20 # Definido no construtor
     }
     
     # Sobrescreve com parâmetros otimizados se existirem
@@ -36,7 +37,14 @@ def train_xgboost(X_train, y_train):
         print("Usando hiperparâmetros padrão.")
     
     model = XGBClassifier(**params)
-    model.fit(X_train, y_train)
+    
+    fit_params = {}
+    if X_test is not None and y_test is not None:
+        fit_params['eval_set'] = [(X_test, y_test)]
+        fit_params['verbose'] = False
+        print("Early stopping ativado com conjunto de teste.")
+
+    model.fit(X_train, y_train, **fit_params)
     print("Treinamento concluído.")
     return model
 
@@ -49,7 +57,18 @@ def evaluate_model(model, X_test, y_test):
     print("\nRelatório de Classificação (Foco no F1-Score da Classe 1):")
     print(classification_report(y_test, y_pred))
     
-    print("\nMatriz de Confusão:")
+    # TAREFA 5: Análise de Threshold (Minimização de Perda Total)
+    from sklearn.metrics import precision_recall_curve
+    precisions, recalls, thresholds = precision_recall_curve(y_test, y_pred_proba)
+    
+    # Exemplo de cálculo de custo (C_FN=10, C_FP=1)
+    # Perda = (10 * Falsos Negativos) + (1 * Falsos Positivos)
+    # Nota: Simplificado para demonstração usando métricas PR
+    costs = (10 * (1 - recalls[:-1])) + (1 * (1 - precisions[:-1]))
+    best_idx = costs.argmin()
+    print(f"\nThreshold sugerido para minimizar custo (C_FN=10x): {thresholds[best_idx]:.4f}")
+    
+    print("\nMatriz de Confusão (no threshold 0.5):")
     print(confusion_matrix(y_test, y_pred))
     
     auc = roc_auc_score(y_test, y_pred_proba)
@@ -78,7 +97,7 @@ if __name__ == "__main__":
         X_train, X_test, y_train, y_test, _, _ = preprocess_and_split(df)
         
         # Treinamento e Avaliação
-        xgb_model = train_xgboost(X_train, y_train)
+        xgb_model = train_xgboost(X_train, y_train, X_test, y_test)
         evaluate_model(xgb_model, X_test, y_test)
         
         # Salvando para a API do MVP

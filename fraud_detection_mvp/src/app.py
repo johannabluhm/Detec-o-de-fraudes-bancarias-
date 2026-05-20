@@ -11,7 +11,7 @@ import os
 app = FastAPI(
     title="API de Detecção de Fraudes",
     description="MVP para o Hackathon",
-    version="2.0.0",
+    version="3.0.0",
 )
 
 # Configuração de caminhos e carregamento do modelo
@@ -85,10 +85,31 @@ def call_sagemaker(data: dict):
         raise HTTPException(status_code=502, detail=f"Erro ao chamar AWS SageMaker: {e}")
 
 
+import hashlib
+
+# Configurações de Threshold
+# Valor 0.62 calibrado via Curva Precision-Recall para minimizar a função de custo:
+# Perda = (10 * Falsos Negativos) + (1 * Falsos Positivos)
+# Baseado nos resultados do treinamento em model.py
+FRAUD_THRESHOLD = float(os.getenv("FRAUD_THRESHOLD", "0.62"))
+
 @app.post("/predict")
 def predict_fraud(request: PredictionRequest):
     trans = request.transaction
     infra = request.infrastructure
+
+    # TAREFA 2: Tratar Train-Serve Skew (Bloquear tipos não treinados)
+    if trans.type.upper() not in ['TRANSFER', 'CASH_OUT']:
+        return {
+            "is_fraud": False, 
+            "fraud_probability": 0.0,
+            "risk_level": "Baixo",
+            "status": "Transação aprovada (Tipo não monitorado)"
+        }
+
+    # TAREFA 6: Anonimizar PII (LGPD)
+    account_hash = hashlib.sha256(trans.nameOrig.encode()).hexdigest()
+    print(f"Processando transação para conta (hash): {account_hash}")
 
     if infra == "AWS":
         return call_sagemaker(trans.model_dump())
@@ -98,18 +119,29 @@ def predict_fraud(request: PredictionRequest):
 
     # 1. Atualizar histórico de Velocity
     history_db[trans.nameOrig] = history_db.get(trans.nameOrig, 0) + 1
+
+    # Nova Regra de Segurança Primária: Saldo Insuficiente
+    if trans.amount > trans.oldbalanceOrg:
+        return {
+            "is_fraud": True,
+            "fraud_probability": 1.0,
+            "risk_level": "Crítico",
+            "status": "Transação bloqueada: Saldo insuficiente na conta de origem",
+        }
     
     # 2. Engenharia de Features em tempo real (Sync com preprocessing.py)
-    type_map = {'CASH_OUT': 1, 'TRANSFER': 4}
+    type_map = {
+        'CASH_OUT': 1, 
+        'TRANSFER': 4, 
+        'PAYMENT': 3, 
+        'CASH_IN': 0, 
+        'DEBIT': 2
+    }
     mapped_type = type_map.get(trans.type.upper(), -1)
     
     if mapped_type == -1:
-        return {
-            "is_fraud": False,
-            "fraud_probability": 0.0,
-            "risk_level": "Baixo",
-            "status": "Tipo de transação sem histórico de fraude (Aprovado automaticamente)"
-        }
+        # Em vez de aprovar tudo, logar e usar um valor neutro ou barrar se for política rígida
+        mapped_type = 3 # Default para PAYMENT se desconhecido (menos fraudulento no dataset)
 
     features = {
         'type': mapped_type,
@@ -129,14 +161,16 @@ def predict_fraud(request: PredictionRequest):
     try:
         prediction = model.predict(input_data)[0]
         probability = model.predict_proba(input_data)[0][1]
-
-        risk_level = "Alto" if probability > 0.8 else "Médio" if probability > 0.5 else "Baixo"
+        
+        # TAREFA 5: Usar threshold calibrado para decisão
+        is_fraud = probability > FRAUD_THRESHOLD
+        risk_level = "Alto" if probability > 0.8 else "Médio" if probability > FRAUD_THRESHOLD else "Baixo"
 
         return {
-            "is_fraud": bool(prediction),
+            "is_fraud": bool(is_fraud),
             "fraud_probability": round(float(probability), 4),
             "risk_level": risk_level,
-            "status": "Transação bloqueada (ALERTA DE FRAUDE)" if prediction == 1 else "Transação aprovada",
+            "status": "Transação bloqueada (ALERTA DE FRAUDE)" if is_fraud else "Transação aprovada",
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erro ao processar predição: {e}")

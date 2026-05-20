@@ -14,12 +14,13 @@ def test_predicao_transacao_valida():
     payload = {
         "transaction": {
             "step": 1,
-            "type": 3,
+            "type": "CASH_OUT",
             "amount": 1500.0,
             "oldbalanceOrg": 5000.0,
             "newbalanceOrig": 3500.0,
             "oldbalanceDest": 1000.0,
-            "newbalanceDest": 2500.0
+            "newbalanceDest": 2500.0,
+            "nameOrig": "C123456789"
         },
         "infrastructure": "Local"
     }
@@ -44,12 +45,13 @@ def test_seguranca_valor_negativo():
     payload = {
         "transaction": {
             "step": 1,
-            "type": 3,
+            "type": "CASH_OUT",
             "amount": -500.0,  # Valor malicioso
             "oldbalanceOrg": 5000.0,
             "newbalanceOrig": 5500.0,
             "oldbalanceDest": 1000.0,
-            "newbalanceDest": 500.0
+            "newbalanceDest": 500.0,
+            "nameOrig": "C123456789"
         },
         "infrastructure": "Local"
     }
@@ -68,12 +70,13 @@ def test_seguranca_dados_faltantes():
     payload = {
         "transaction": {
             "step": 1,
-            "type": 3,
+            "type": "CASH_OUT",
             # 'amount' foi removido propositalmente
             "oldbalanceOrg": 5000.0,
             "newbalanceOrig": 5000.0,
             "oldbalanceDest": 1000.0,
-            "newbalanceDest": 1000.0
+            "newbalanceDest": 1000.0,
+            "nameOrig": "C123456789"
         },
         "infrastructure": "Local"
     }
