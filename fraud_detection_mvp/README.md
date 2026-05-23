@@ -31,7 +31,19 @@ Caso prefira rodar no seu ambiente local:
 2. **Deps:** `pip install -r requirements.txt`
 3. **Pipeline:** `python run_pipeline.py` (Isso treina o modelo, testa a API e sobe os servidores).
 
+## 📱 Mobile App (v4.0)
+Novo aplicativo mobile desenvolvido em **React Native + Expo** para alertas de fraude em tempo real na palma da mão.
+
+### Como Rodar o Mobile:
+1. Acesse a pasta: `cd fraud_detection_mobile`
+2. Instale as dependências: `npm install`
+3. Inicie o Expo: `npx expo start`
+
+---
+
 ## 📁 Estrutura do Projeto
+- `fraud_detection_mvp/`: Core do projeto (API + ML).
+- `fraud_detection_mobile/`: Aplicativo mobile React Native.
 - `src/app.py`: API FastAPI de baixa latência.
 - `src/model.py`: Lógica de treinamento XGBoost.
 - `src/frontend.py`: Dashboard Streamlit para análise de risco.
