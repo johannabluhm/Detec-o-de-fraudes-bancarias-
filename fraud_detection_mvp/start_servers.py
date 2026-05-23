@@ -15,7 +15,7 @@ def iniciar_aplicacao():
     # 1. Iniciar API FastAPI nos bastidores
     print("Iniciando API de Detecção (Back-end)...")
     api_process = subprocess.Popen(
-        [python_executable, "-m", "uvicorn", "src.app:app", "--host", "127.0.0.1", "--port", "8000"],
+        [python_executable, "-m", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"],
         cwd=projeto_dir
     )
 

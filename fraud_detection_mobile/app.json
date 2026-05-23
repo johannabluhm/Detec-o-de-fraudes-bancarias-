@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "FraudGuard",
+    "slug": "fraud-guard-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0A0F",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0A0F"
+      },
+      "package": "com.hackathon.fraudguard"
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}
